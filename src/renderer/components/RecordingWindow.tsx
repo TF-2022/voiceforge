@@ -56,7 +56,7 @@ export default function RecordingWindow({ status, stream, onOpenSettings, onStop
             <LiveWaveform stream={stream} />
             <button
               className="no-drag"
-              onClick={onStop}
+              onMouseDown={(e) => { e.preventDefault(); onStop?.(); }}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
                 width: 28, height: 28, borderRadius: 14,

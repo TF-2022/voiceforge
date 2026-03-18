@@ -59,6 +59,7 @@ function createRecordingWindow(): BrowserWindow {
     skipTaskbar: true,
     resizable: true,
     movable: true,
+    focusable: false,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -170,9 +171,11 @@ app.whenReady().then(async () => {
       send("show:settings");
       setTimeout(() => {
         if (recordingWindow && !recordingWindow.isDestroyed()) {
+          recordingWindow.setFocusable(true);
           recordingWindow.setContentSize(520, 600);
           recordingWindow.center();
           recordingWindow.show();
+          recordingWindow.focus();
         }
       }, 50);
     }
@@ -291,6 +294,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("window:hide", () => {
     if (recordingWindow && !recordingWindow.isDestroyed()) {
       recordingWindow.hide();
+      recordingWindow.setFocusable(false);
     }
   });
 
@@ -349,16 +353,20 @@ app.whenReady().then(async () => {
     // Show window immediately — renderer will display onboarding
     recordingWindow.once("ready-to-show", () => {
       if (!recordingWindow || recordingWindow.isDestroyed()) return;
+      recordingWindow.setFocusable(true);
       recordingWindow.setContentSize(420, 520);
       recordingWindow.center();
       recordingWindow.show();
+      recordingWindow.focus();
     });
     // Fallback: if ready-to-show already fired, show after a short delay
     setTimeout(() => {
       if (recordingWindow && !recordingWindow.isDestroyed() && !recordingWindow.isVisible()) {
+        recordingWindow.setFocusable(true);
         recordingWindow.setContentSize(420, 520);
         recordingWindow.center();
         recordingWindow.show();
+        recordingWindow.focus();
       }
     }, 2000);
   }
