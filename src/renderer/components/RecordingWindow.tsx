@@ -125,11 +125,7 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
     const ctx = canvas.getContext("2d")!;
 
     const barCount = 16;
-    // Start bars at mid-height so animation feels like it's already alive
-    const smoothBars = new Float32Array(barCount);
-    for (let i = 0; i < barCount; i++) {
-      smoothBars[i] = 0.15 + Math.sin(i * 0.8) * 0.1;
-    }
+    const smoothBars = new Float32Array(barCount).fill(0);
     const dpr = window.devicePixelRatio || 1;
     let frameCount = 0;
 
@@ -158,16 +154,21 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
       const startX = (w - totalW) / 2;
 
       for (let i = 0; i < barCount; i++) {
-        const freqIdx = Math.floor((i / barCount) * bufferLength * 0.5 + bufferLength * 0.05);
+        // Mirror: center bars get strongest frequencies, edges get weaker
+        const distFromCenter = Math.abs(i - (barCount - 1) / 2) / ((barCount - 1) / 2);
+        const freqIdx = Math.floor(distFromCenter * bufferLength * 0.4 + bufferLength * 0.05);
         const raw = dataArray[freqIdx] / 255;
 
-        // Faster lerp for first 10 frames so bars snap to real audio quickly
+        // Center bars get a boost, edge bars are attenuated
+        const centerBoost = 1 - distFromCenter * 0.5;
+        const boosted = raw * centerBoost;
+
         const lerpSpeed = frameCount < 10 ? 0.6 : 0.28;
-        smoothBars[i] += (raw - smoothBars[i]) * lerpSpeed;
+        smoothBars[i] += (boosted - smoothBars[i]) * lerpSpeed;
         const val = smoothBars[i];
 
         const maxH = h * 0.9;
-        const minH = 4;
+        const minH = 3;
         const barH = Math.max(minH, val * maxH);
 
         const x = startX + i * (barW + gap);
