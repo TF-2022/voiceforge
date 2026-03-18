@@ -1,6 +1,6 @@
 {
   "name": "cursorvoice",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Open-source voice dictation app, speak, transcribe, paste at cursor",
   "main": "./dist/main/index.js",
   "scripts": {
