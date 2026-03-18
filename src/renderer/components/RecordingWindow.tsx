@@ -125,8 +125,13 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
     const ctx = canvas.getContext("2d")!;
 
     const barCount = 16;
-    const smoothBars = new Float32Array(barCount).fill(0);
+    // Start bars at mid-height so animation feels like it's already alive
+    const smoothBars = new Float32Array(barCount);
+    for (let i = 0; i < barCount; i++) {
+      smoothBars[i] = 0.15 + Math.sin(i * 0.8) * 0.1;
+    }
     const dpr = window.devicePixelRatio || 1;
+    let frameCount = 0;
 
     function resize() {
       const rect = canvas.getBoundingClientRect();
@@ -138,6 +143,7 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
 
     const draw = () => {
       animRef.current = requestAnimationFrame(draw);
+      frameCount++;
       analyser.getByteFrequencyData(dataArray);
 
       const w = canvas.getBoundingClientRect().width;
@@ -155,7 +161,9 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
         const freqIdx = Math.floor((i / barCount) * bufferLength * 0.5 + bufferLength * 0.05);
         const raw = dataArray[freqIdx] / 255;
 
-        smoothBars[i] += (raw - smoothBars[i]) * 0.28;
+        // Faster lerp for first 10 frames so bars snap to real audio quickly
+        const lerpSpeed = frameCount < 10 ? 0.6 : 0.28;
+        smoothBars[i] += (raw - smoothBars[i]) * lerpSpeed;
         const val = smoothBars[i];
 
         const maxH = h * 0.9;
