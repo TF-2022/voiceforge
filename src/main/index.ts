@@ -23,6 +23,12 @@ function log(msg: string) {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
+app.on("second-instance", () => {
+  if (recordingWindow && !recordingWindow.isDestroyed()) {
+    if (!recordingWindow.isVisible()) recordingWindow.show();
+    recordingWindow.focus();
+  }
+});
 app.commandLine.appendSwitch("disable-gpu-cache");
 import path from "node:path";
 import fs from "node:fs";
@@ -172,13 +178,19 @@ app.whenReady().then(async () => {
       setTimeout(() => {
         if (recordingWindow && !recordingWindow.isDestroyed()) {
           recordingWindow.setFocusable(true);
-          recordingWindow.setContentSize(520, 600);
+          recordingWindow.setContentSize(820, 620);
           recordingWindow.center();
           recordingWindow.show();
           recordingWindow.focus();
         }
       }, 50);
     }
+  });
+
+  // Sync auto-start with OS login items
+  app.setLoginItemSettings({
+    openAtLogin: getConfig("launchAtStartup"),
+    openAsHidden: true,
   });
 
   // Register global hotkey
@@ -420,7 +432,9 @@ app.whenReady().then(async () => {
   setInterval(() => autoUpdater.checkForUpdatesAndNotify(), 4 * 60 * 60 * 1000);
 });
 
-app.on("window-all-closed", (e: Event) => e.preventDefault());
+app.on("window-all-closed", () => {
+  // Don't quit when all windows are closed — app stays in tray
+});
 
 app.on("before-quit", () => {
   isQuitting = true;

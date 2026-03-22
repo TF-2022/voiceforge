@@ -11,8 +11,7 @@ resources/icons/icon.png
 .claude
 CLAUDE.md
 docs/
-web/node_modules/
-web/.next/
+web/
 
 .vercel
 .env*.local

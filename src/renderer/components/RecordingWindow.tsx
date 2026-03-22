@@ -6,16 +6,17 @@ type Status = "idle" | "recording" | "transcribing" | "injecting" | "done" | "em
 interface Props {
   status: Status;
   stream: MediaStream | null;
-  onOpenSettings?: () => void;
   onStop?: () => void;
   onDismiss?: () => void;
 }
 
-export default function RecordingWindow({ status, stream, onOpenSettings, onStop, onDismiss }: Props) {
+export default function RecordingWindow({ status, stream, onStop, onDismiss }: Props) {
+  // Idle = render nothing. Window is transparent, user sees nothing.
+  if (status === "idle") return null;
+
   const isActive = status === "recording";
   const isProcessing = status === "transcribing" || status === "injecting";
   const isDone = status === "done";
-  const isIdle = status === "idle";
   const isEmpty = status === "empty";
   const isError = status === "error";
 
@@ -28,31 +29,15 @@ export default function RecordingWindow({ status, stream, onOpenSettings, onStop
       <div className="drag-region" style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         height: 48,
-        padding: isActive ? "0 10px" : "0 14px",
         borderRadius: 24,
         background: "hsla(240, 10%, 5%, 0.95)",
         border: "1px solid hsla(240, 4%, 20%, 0.6)",
-        transition: "padding 0.3s ease, min-width 0.3s ease",
-        minWidth: isActive ? 220 : isDone ? 100 : isProcessing ? 110 : 48,
+        padding: isActive ? "0 10px" : "0 14px",
         gap: 8,
+        minWidth: isActive ? 220 : isDone ? 100 : isProcessing ? 110 : 80,
       }}>
-
-        {isIdle && (
-          <div style={{
-            width: 20, height: 20,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "hsla(0,0%,100%,0.3)",
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
-              <path d="M19 10v2a7 7 0 01-14 0v-2" />
-            </svg>
-          </div>
-        )}
-
         {isActive && (
           <>
-            {/* Dismiss button (left) — app branding blue */}
             <button
               className="no-drag"
               onMouseDown={(e) => { e.preventDefault(); onDismiss?.(); }}
@@ -62,15 +47,6 @@ export default function RecordingWindow({ status, stream, onOpenSettings, onStop
                 background: "hsla(217, 91%, 60%, 0.1)",
                 border: "none", color: "hsla(217, 91%, 60%, 0.6)",
                 cursor: "pointer", padding: 0, flexShrink: 0,
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsla(217, 91%, 60%, 0.2)";
-                e.currentTarget.style.color = "hsl(217, 91%, 60%)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "hsla(217, 91%, 60%, 0.1)";
-                e.currentTarget.style.color = "hsla(217, 91%, 60%, 0.6)";
               }}
             >
               <X size={12} strokeWidth={2.5} />
@@ -78,7 +54,6 @@ export default function RecordingWindow({ status, stream, onOpenSettings, onStop
 
             <LiveWaveform stream={stream} />
 
-            {/* Stop button (right) — red for clear contrast */}
             <button
               className="no-drag"
               onMouseDown={(e) => { e.preventDefault(); onStop?.(); }}
@@ -88,15 +63,6 @@ export default function RecordingWindow({ status, stream, onOpenSettings, onStop
                 background: "hsla(0, 84%, 60%, 0.15)",
                 border: "none", color: "hsl(0, 84%, 60%)",
                 cursor: "pointer", padding: 0, flexShrink: 0,
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsl(0, 84%, 60%)";
-                e.currentTarget.style.color = "white";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "hsla(0, 84%, 60%, 0.15)";
-                e.currentTarget.style.color = "hsl(0, 84%, 60%)";
               }}
             >
               <Square size={10} fill="currentColor" />
@@ -123,7 +89,6 @@ export default function RecordingWindow({ status, stream, onOpenSettings, onStop
         )}
 
         {isEmpty && <span style={{ fontSize: 10, color: "hsla(0,0%,100%,0.35)" }}>Vide</span>}
-
         {isError && <span style={{ fontSize: 10, color: "var(--red)" }}>Erreur</span>}
       </div>
     </div>
@@ -179,12 +144,9 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
       const startX = (w - totalW) / 2;
 
       for (let i = 0; i < barCount; i++) {
-        // Mirror: center bars get strongest frequencies, edges get weaker
         const distFromCenter = Math.abs(i - (barCount - 1) / 2) / ((barCount - 1) / 2);
         const freqIdx = Math.floor(distFromCenter * bufferLength * 0.4 + bufferLength * 0.05);
         const raw = dataArray[freqIdx] / 255;
-
-        // Center bars get a boost, edge bars are attenuated
         const centerBoost = 1 - distFromCenter * 0.5;
         const boosted = raw * centerBoost;
 
@@ -193,9 +155,7 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
         const val = smoothBars[i];
 
         const maxH = h * 0.9;
-        const minH = 3;
-        const barH = Math.max(minH, val * maxH);
-
+        const barH = Math.max(3, val * maxH);
         const x = startX + i * (barW + gap);
         const y = cy - barH / 2;
 
@@ -217,7 +177,7 @@ function LiveWaveform({ stream }: { stream: MediaStream | null }) {
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: 120, height: 32, display: "block" }}
+      style={{ width: 120, height: 32, display: "block", flexShrink: 0 }}
     />
   );
 }

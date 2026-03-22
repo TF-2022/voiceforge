@@ -1,6 +1,6 @@
 {
   "name": "cursorvoice",
-  "version": "1.0.6",
+  "version": "1.0.0",
   "description": "Open-source voice dictation app, speak, transcribe, paste at cursor",
   "main": "./dist/main/index.js",
   "scripts": {
@@ -36,7 +36,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",
-    "electron": "^41.0.2",
+    "electron": "^41.0.3",
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "icon-gen": "^5.0.0",

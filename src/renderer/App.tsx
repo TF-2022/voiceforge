@@ -9,7 +9,7 @@ type Status = "idle" | "recording" | "transcribing" | "injecting" | "done" | "em
 type View = "recording" | "settings" | "onboarding";
 
 const RECORDING_SIZE = { w: 260, h: 72 };
-const SETTINGS_SIZE = { w: 520, h: 600 };
+const SETTINGS_SIZE = { w: 820, h: 620 };
 const ONBOARDING_SIZE = { w: 420, h: 520 };
 
 const DEV_FORCE_ONBOARDING = false;

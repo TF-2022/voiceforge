@@ -18,13 +18,19 @@ const DEFAULTS: AppConfig = {
   model: "base",
   language: "fr",
   inputDevice: "default",
-  launchAtStartup: false,
+  launchAtStartup: true,
   pasteMethod: "clipboard",
   windowPosition: null,
   onboardingDone: false,
 };
 
 export const config = new Store<AppConfig>({ defaults: DEFAULTS });
+
+// Migration: enable auto-start for users upgrading to v1.0.0
+if (!config.get("_migrated_v100" as any)) {
+  config.set("launchAtStartup", true);
+  config.set("_migrated_v100" as any, true);
+}
 
 export function getConfig<K extends keyof AppConfig>(key: K): AppConfig[K] {
   return config.get(key);
