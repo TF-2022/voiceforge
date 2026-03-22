@@ -273,18 +273,28 @@ html, body, #root {
   white-space: nowrap;
 }
 
-/* ─── Kbd ─── */
+/* ─── Kbd (physical key look) ─── */
 kbd {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 7px 4px;
+  min-width: 22px;
+  justify-content: center;
+  border-radius: 5px;
   font-size: 11px;
-  font-family: monospace;
-  font-weight: 500;
-  background: var(--secondary);
-  border: 1px solid var(--border);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 600;
+  line-height: 1;
   color: var(--fg);
+  background: linear-gradient(180deg, hsl(240 6% 14%) 0%, hsl(240 6% 10%) 100%);
+  border: 1px solid hsl(240 4% 20%);
+  border-bottom-width: 3px;
+  border-bottom-color: hsl(240 4% 12%);
+  box-shadow:
+    0 1px 0 hsl(240 4% 8%),
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 hsl(240 6% 18%);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
 }
 
 /* ─── Recording window ─── */
@@ -408,4 +418,28 @@ kbd {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ─── Status pulse ─── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.status-pulse {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.status-pulse.green { background: var(--green); }
+.status-pulse.blue { background: var(--blue); }
+.status-pulse.red { background: var(--red); }
+
+/* ─── Bubble preview bar animation ─── */
+@keyframes bubble-bar {
+  0% { transform: scaleY(1); }
+  100% { transform: scaleY(0.4); }
 }

@@ -1,11 +1,17 @@
-import { useState, useEffect, useMemo } from "react";
-import { X, RotateCcw, Download, Check, Loader2, Keyboard, Mic, Info, Search } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { X, RotateCcw, Download, Check, Loader2, Keyboard, Mic, Info, Search, AudioLines, Globe, Sparkles, Clock, Copy, Trash2, ChevronDown, ShieldCheck } from "lucide-react";
 import { api, ModelProgress } from "../lib/ipc";
+import { BubblePreview } from "./BubblePreview";
 
 interface Settings {
   hotkey: string;
   model: string;
   language: string;
+  inputDevice: string;
+  pushToTalk: boolean;
+  translateMode: boolean;
+  initialPrompt: string;
+  silenceTimeout: number;
   launchAtStartup: boolean;
 }
 
@@ -126,15 +132,19 @@ const ALL_LANGUAGES = [
   { id: "sq", label: "Albanian" },
 ];
 
-type Section = "general" | "model" | "about";
+type Section = "general" | "language" | "transcription" | "microphone" | "model" | "history" | "about";
 
 const NAV_ITEMS: { id: Section; label: string; icon: typeof Keyboard }[] = [
   { id: "general", label: "Général", icon: Keyboard },
+  { id: "language", label: "Langue", icon: Globe },
+  { id: "transcription", label: "Transcription", icon: Sparkles },
+  { id: "microphone", label: "Microphone", icon: AudioLines },
   { id: "model", label: "Modèle", icon: Mic },
+  { id: "history", label: "Historique", icon: Clock },
   { id: "about", label: "À propos", icon: Info },
 ];
 
-export default function SettingsPanel({ onClose }: { onClose: () => void }) {
+export default function SettingsPanel({ onClose, onDeviceChange, onSilenceTimeoutChange }: { onClose: () => void; onDeviceChange?: (id: string) => void; onSilenceTimeoutChange?: (v: number) => void }) {
   const [section, setSection] = useState<Section>("general");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -163,6 +173,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     if (!settings) return;
     setSettings({ ...settings, [key]: value });
     api?.setSetting(key, value);
+    if (key === "inputDevice") onDeviceChange?.(value);
+    if (key === "silenceTimeout") onSilenceTimeoutChange?.(value);
   };
 
   const handleModelSelect = async (id: string) => {
@@ -199,13 +211,13 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Sidebar */}
         <nav style={{
-          width: 170,
+          width: 200,
           flexShrink: 0,
           borderRight: "1px solid var(--border)",
-          padding: "16px 10px",
+          padding: "20px 12px",
           display: "flex",
           flexDirection: "column",
-          gap: 4,
+          gap: 2,
         }}>
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const active = section === id;
@@ -217,17 +229,18 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   display: "flex",
                   alignItems: "center",
                   gap: 10,
-                  padding: "10px 12px",
+                  padding: "10px 14px",
                   borderRadius: "var(--radius)",
                   border: "none",
                   background: active ? "hsla(217, 91%, 60%, 0.08)" : "transparent",
                   color: active ? "var(--blue)" : "var(--muted)",
                   fontSize: 13,
-                  fontWeight: active ? 600 : 500,
+                  fontWeight: active ? 600 : 400,
                   cursor: "pointer",
                   transition: "all 0.15s",
                   width: "100%",
                   textAlign: "left",
+                  letterSpacing: "0.01em",
                 }}
                 onMouseEnter={(e) => {
                   if (!active) e.currentTarget.style.background = "var(--secondary)";
@@ -236,7 +249,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   if (!active) e.currentTarget.style.background = "transparent";
                 }}
               >
-                <Icon size={15} />
+                <Icon size={15} style={{ opacity: active ? 1 : 0.7 }} />
                 {label}
               </button>
             );
@@ -244,9 +257,18 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         </nav>
 
         {/* Content */}
-        <div className="overflow-y-auto" style={{ flex: 1, padding: "24px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <div className="overflow-y-auto" style={{ flex: 1, padding: "28px 36px", display: "flex", flexDirection: "column", gap: 28 }}>
           {section === "general" && (
             <GeneralSection settings={settings} update={update} />
+          )}
+          {section === "language" && (
+            <LanguageSection settings={settings} update={update} />
+          )}
+          {section === "transcription" && (
+            <TranscriptionSection settings={settings} update={update} />
+          )}
+          {section === "microphone" && (
+            <MicrophoneSection settings={settings} update={update} />
           )}
           {section === "model" && (
             <ModelSection
@@ -256,6 +278,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
               downloadPct={downloadPct}
               onModelSelect={handleModelSelect}
             />
+          )}
+          {section === "history" && (
+            <HistorySection />
           )}
           {section === "about" && (
             <AboutSection
@@ -268,7 +293,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
       {/* Footer */}
       <div style={{
-        padding: "8px 16px",
+        padding: "10px 20px",
         borderTop: "1px solid var(--border)",
         flexShrink: 0,
         display: "flex",
@@ -279,17 +304,28 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           CursorVoice {appVersion ? `v${appVersion}` : ""}
         </span>
         {updateStatus.status === "up-to-date" && (
-          <span style={{ fontSize: 10, color: "var(--green)", opacity: 0.7 }}>✓ À jour</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--green)", opacity: 0.8 }}>
+            <span className="status-pulse green" />
+            À jour
+          </span>
         )}
         {updateStatus.status === "downloading" && (
-          <span style={{ fontSize: 10, color: "var(--blue)" }}>↓ v{updateStatus.version}...</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--blue)" }}>
+            <span className="status-pulse blue" />
+            Téléchargement v{updateStatus.version}
+          </span>
         )}
         {updateStatus.status === "ready" && (
           <button
-            className="select-btn"
             onClick={() => api?.installUpdate()}
-            style={{ padding: "4px 10px", fontSize: 10, color: "var(--blue)", border: "1px solid var(--blue)", borderRadius: 6, background: "transparent", cursor: "pointer" }}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "5px 12px", fontSize: 11, fontWeight: 500,
+              color: "var(--blue)", border: "1px solid hsla(217, 91%, 60%, 0.3)",
+              borderRadius: 6, background: "hsla(217, 91%, 60%, 0.06)", cursor: "pointer",
+            }}
           >
+            <span className="status-pulse blue" />
             Installer v{updateStatus.version}
           </button>
         )}
@@ -299,7 +335,109 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 }
 
 /* ─── General Section ─── */
+function useAudioDevices() {
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        // Request permission first so labels are available
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+        const all = await navigator.mediaDevices.enumerateDevices();
+        setDevices(all.filter((d) => d.kind === "audioinput"));
+      } catch {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        setDevices(all.filter((d) => d.kind === "audioinput"));
+      }
+    }
+    load();
+    navigator.mediaDevices.addEventListener("devicechange", load);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", load);
+  }, []);
+
+  return devices;
+}
+
 function GeneralSection({ settings, update }: { settings: Settings; update: (key: string, value: any) => void }) {
+  return (
+    <>
+      <div>
+        <div className="section-title">Raccourci clavier</div>
+        <HotkeyInput value={settings.hotkey} onChange={(v) => update("hotkey", v)} />
+      </div>
+
+      <div>
+        <div className="section-title">Mode d'enregistrement</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="card-row">
+            <div>
+              <span style={{ fontSize: 13, color: "var(--muted)" }}>Push-to-talk</span>
+              <div style={{ fontSize: 11, color: "var(--muted)", opacity: 0.6, marginTop: 2 }}>
+                Maintenir le raccourci pour enregistrer, relâcher pour transcrire
+              </div>
+            </div>
+            <button
+              className={`toggle ${settings.pushToTalk ? "on" : ""}`}
+              onClick={() => update("pushToTalk", !settings.pushToTalk)}
+            >
+              <div className="toggle-knob" />
+            </button>
+          </div>
+          <SilenceDropdown value={settings.silenceTimeout || 0} onChange={(v) => update("silenceTimeout", v)} />
+        </div>
+      </div>
+
+      <div>
+        <div className="section-title">Système</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="card-row">
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>Lancer au démarrage</span>
+            <button
+              className={`toggle ${settings.launchAtStartup ? "on" : ""}`}
+              onClick={() => update("launchAtStartup", !settings.launchAtStartup)}
+            >
+              <div className="toggle-knob" />
+            </button>
+          </div>
+          <div style={{
+            padding: "14px",
+            borderRadius: "var(--radius)",
+            border: "1px solid var(--border)",
+            display: "flex", flexDirection: "column", gap: 12,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <span style={{ fontSize: 13, color: "var(--muted)" }}>Position de la bulle</span>
+                <div style={{ fontSize: 11, color: "var(--muted)", opacity: 0.6, marginTop: 2 }}>
+                  Glissez la bulle pour la déplacer. Elle se souviendra de sa position.
+                </div>
+              </div>
+              <button
+                onClick={() => update("windowPosition", null)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "5px 10px", fontSize: 11, fontWeight: 500,
+                  color: "var(--muted)", border: "1px solid var(--border)",
+                  borderRadius: 6, background: "transparent", cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <RotateCcw size={11} /> Recentrer
+              </button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <BubblePreview />
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─── Language Section ─── */
+function LanguageSection({ settings, update }: { settings: Settings; update: (key: string, value: any) => void }) {
   const [langSearch, setLangSearch] = useState("");
   const [showAllLangs, setShowAllLangs] = useState(false);
 
@@ -315,127 +453,218 @@ function GeneralSection({ settings, update }: { settings: Settings; update: (key
   }, [langSearch]);
 
   return (
+    <div>
+      <div className="section-title">Langue de transcription</div>
+      <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+        Sélectionnez la langue que vous parlez pour la dictée.
+      </p>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {TOP_LANGUAGES.map((lang) => (
+          <button
+            key={lang.id}
+            className={`chip ${settings.language === lang.id ? "active" : ""}`}
+            onClick={() => { update("language", lang.id); setShowAllLangs(false); }}
+          >
+            {lang.label}
+          </button>
+        ))}
+        <button
+          className={`chip ${!isTopLang && settings.language !== "auto" ? "active" : ""}`}
+          onClick={() => setShowAllLangs(!showAllLangs)}
+          style={{ gap: 4 }}
+        >
+          {!isTopLang && currentLang ? currentLang.label : "Autres..."}
+        </button>
+      </div>
+
+      {showAllLangs && (
+        <div style={{
+          marginTop: 8,
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          overflow: "hidden",
+        }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 10px",
+            borderBottom: "1px solid var(--border)",
+          }}>
+            <Search size={13} style={{ color: "var(--muted)", flexShrink: 0 }} />
+            <input
+              type="text"
+              value={langSearch}
+              onChange={(e) => setLangSearch(e.target.value)}
+              placeholder="Rechercher..."
+              autoFocus
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                color: "var(--fg)",
+                fontSize: 13,
+              }}
+            />
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto", padding: 4 }}>
+            {filteredLangs.map((lang) => (
+              <button
+                key={lang.id}
+                onClick={() => { update("language", lang.id); setShowAllLangs(false); setLangSearch(""); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: settings.language === lang.id ? "hsla(217, 91%, 60%, 0.08)" : "transparent",
+                  color: settings.language === lang.id ? "var(--blue)" : "var(--fg)",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  transition: "background 0.1s",
+                  textAlign: "left",
+                }}
+                onMouseEnter={(e) => {
+                  if (settings.language !== lang.id) e.currentTarget.style.background = "var(--secondary)";
+                }}
+                onMouseLeave={(e) => {
+                  if (settings.language !== lang.id) e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <span>{lang.label}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "monospace" }}>{lang.id}</span>
+              </button>
+            ))}
+            {filteredLangs.length === 0 && (
+              <div style={{ padding: "12px 10px", fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
+                Aucune langue trouvée
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Transcription Section ─── */
+function TranscriptionSection({ settings, update }: { settings: Settings; update: (key: string, value: any) => void }) {
+  return (
     <>
       <div>
-        <div className="section-title">Raccourci clavier</div>
-        <HotkeyInput value={settings.hotkey} onChange={(v) => update("hotkey", v)} />
+        <div className="section-title">Traduction automatique</div>
+        <div className="card-row">
+          <div>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>Traduire en anglais</span>
+            <div style={{ fontSize: 11, color: "var(--muted)", opacity: 0.6, marginTop: 2 }}>
+              Parlez dans votre langue, le texte sera automatiquement traduit en anglais
+            </div>
+          </div>
+          <button
+            className={`toggle ${settings.translateMode ? "on" : ""}`}
+            onClick={() => update("translateMode", !settings.translateMode)}
+          >
+            <div className="toggle-knob" />
+          </button>
+        </div>
+        <p style={{ fontSize: 11, color: "var(--muted)", opacity: 0.5, marginTop: 8 }}>
+          Seule la traduction vers l'anglais est disponible pour le moment.
+        </p>
       </div>
 
       <div>
-        <div className="section-title">Langue de transcription</div>
-        {/* Top languages as chips */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {TOP_LANGUAGES.map((lang) => (
-            <button
-              key={lang.id}
-              className={`chip ${settings.language === lang.id ? "active" : ""}`}
-              onClick={() => { update("language", lang.id); setShowAllLangs(false); }}
-            >
-              {lang.label}
-            </button>
-          ))}
-          <button
-            className={`chip ${!isTopLang && settings.language !== "auto" ? "active" : ""}`}
-            onClick={() => setShowAllLangs(!showAllLangs)}
-            style={{ gap: 4 }}
-          >
-            {!isTopLang && currentLang ? currentLang.label : "Autres..."}
-          </button>
-        </div>
-
-        {/* Expandable full language list */}
-        {showAllLangs && (
-          <div style={{
-            marginTop: 8,
+        <div className="section-title">Prompt initial</div>
+        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+          Donnez du contexte à l'IA pour améliorer la précision : noms propres, jargon technique, style de ponctuation.
+        </p>
+        <textarea
+          value={settings.initialPrompt || ""}
+          onChange={(e) => update("initialPrompt", e.target.value)}
+          placeholder="Ex: Vocabulaire technique, noms de projets, acronymes fréquents..."
+          rows={3}
+          style={{
+            width: "100%",
+            background: "var(--secondary)",
             border: "1px solid var(--border)",
             borderRadius: "var(--radius)",
-            overflow: "hidden",
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 10px",
-              borderBottom: "1px solid var(--border)",
-            }}>
-              <Search size={13} style={{ color: "var(--muted)", flexShrink: 0 }} />
-              <input
-                type="text"
-                value={langSearch}
-                onChange={(e) => setLangSearch(e.target.value)}
-                placeholder="Rechercher..."
-                autoFocus
-                style={{
-                  flex: 1,
-                  background: "transparent",
-                  border: "none",
-                  outline: "none",
-                  color: "var(--fg)",
+            color: "var(--fg)",
+            fontSize: 13,
+            padding: "10px 12px",
+            resize: "vertical",
+            outline: "none",
+            fontFamily: "inherit",
+            lineHeight: 1.5,
+            boxSizing: "border-box",
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = "var(--blue)"; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+        />
+      </div>
+    </>
+  );
+}
+
+/* ─── Microphone Section ─── */
+function MicrophoneSection({ settings, update }: { settings: Settings; update: (key: string, value: any) => void }) {
+  const audioDevices = useAudioDevices();
+
+  return (
+    <div>
+      <div className="section-title">Périphérique d'entrée</div>
+      <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+        Sélectionnez le microphone utilisé pour la dictée vocale.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <button
+          className={`select-btn ${settings.inputDevice === "default" ? "active" : ""}`}
+          onClick={() => update("inputDevice", "default")}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <AudioLines size={13} style={{ flexShrink: 0, color: settings.inputDevice === "default" ? "var(--blue)" : "var(--muted)" }} />
+            <span style={{ fontSize: 13, color: settings.inputDevice === "default" ? "var(--blue)" : "var(--fg)" }}>
+              Par défaut (système)
+            </span>
+          </div>
+          {settings.inputDevice === "default" && <Check size={12} style={{ color: "var(--green)", flexShrink: 0 }} />}
+        </button>
+
+        {audioDevices.filter((d) => d.deviceId !== "default").map((device) => {
+          const active = settings.inputDevice === device.deviceId;
+          return (
+            <button
+              key={device.deviceId}
+              className={`select-btn ${active ? "active" : ""}`}
+              onClick={() => update("inputDevice", device.deviceId)}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <Mic size={13} style={{ flexShrink: 0, color: active ? "var(--blue)" : "var(--muted)" }} />
+                <span style={{
                   fontSize: 13,
-                }}
-              />
-            </div>
-            <div style={{ maxHeight: 180, overflowY: "auto", padding: 4 }}>
-              {filteredLangs.map((lang) => (
-                <button
-                  key={lang.id}
-                  onClick={() => { update("language", lang.id); setShowAllLangs(false); setLangSearch(""); }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    width: "100%",
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: settings.language === lang.id ? "hsla(217, 91%, 60%, 0.08)" : "transparent",
-                    color: settings.language === lang.id ? "var(--blue)" : "var(--fg)",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    transition: "background 0.1s",
-                    textAlign: "left",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (settings.language !== lang.id) e.currentTarget.style.background = "var(--secondary)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (settings.language !== lang.id) e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <span>{lang.label}</span>
-                  <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "monospace" }}>{lang.id}</span>
-                </button>
-              ))}
-              {filteredLangs.length === 0 && (
-                <div style={{ padding: "12px 10px", fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
-                  Aucune langue trouvée
-                </div>
-              )}
-            </div>
+                  color: active ? "var(--blue)" : "var(--fg)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}>
+                  {device.label || `Micro ${device.deviceId.slice(0, 8)}`}
+                </span>
+              </div>
+              {active && <Check size={12} style={{ color: "var(--green)", flexShrink: 0 }} />}
+            </button>
+          );
+        })}
+
+        {audioDevices.length === 0 && (
+          <div style={{ padding: "16px 12px", fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
+            Aucun microphone détecté
           </div>
         )}
       </div>
-
-      <div>
-        <div className="section-title">Système</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <div className="card-row">
-            <span style={{ fontSize: 13, color: "var(--muted)" }}>Lancer au démarrage</span>
-            <button
-              className={`toggle ${settings.launchAtStartup ? "on" : ""}`}
-              onClick={() => update("launchAtStartup", !settings.launchAtStartup)}
-            >
-              <div className="toggle-knob" />
-            </button>
-          </div>
-          <button className="select-btn" onClick={() => update("windowPosition", null)}>
-            <span style={{ fontSize: 13, color: "var(--muted)", display: "flex", alignItems: "center", gap: 8 }}>
-              <RotateCcw size={14} /> Réinitialiser la position
-            </span>
-          </button>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -455,7 +684,7 @@ function ModelSection({
 }) {
   return (
     <div>
-      <div className="section-title">Modèle Whisper</div>
+      <div className="section-title">Modèle de reconnaissance vocale</div>
       <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Le modèle est téléchargé une fois et fonctionne 100% hors-ligne.
       </p>
@@ -498,6 +727,139 @@ function ModelSection({
   );
 }
 
+/* ─── History Section ─── */
+function HistorySection() {
+  const [entries, setEntries] = useState<{ text: string; date: string }[]>([]);
+  const [copied, setCopied] = useState<number | null>(null);
+
+  useEffect(() => {
+    api?.getHistory().then(setEntries);
+  }, []);
+
+  const copyText = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text);
+    setCopied(idx);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  const clearAll = () => {
+    api?.clearHistory();
+    setEntries([]);
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "À l'instant";
+    if (diffMin < 60) return `Il y a ${diffMin}min`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `Il y a ${diffH}h`;
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div>
+          <div className="section-title" style={{ marginBottom: 0 }}>Dernières transcriptions</div>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{entries.length} entrée{entries.length !== 1 ? "s" : ""}</span>
+        </div>
+        {entries.length > 0 && (
+          <button
+            onClick={clearAll}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "5px 10px", fontSize: 11,
+              color: "var(--red)", border: "1px solid hsla(0, 84%, 60%, 0.2)",
+              borderRadius: 6, background: "transparent", cursor: "pointer",
+            }}
+          >
+            <Trash2 size={11} /> Effacer tout
+          </button>
+        )}
+      </div>
+
+      {/* Privacy badge */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 12px", marginBottom: 16,
+        borderRadius: "var(--radius)",
+        background: "hsla(142, 76%, 36%, 0.06)",
+        border: "1px solid hsla(142, 76%, 36%, 0.12)",
+      }}>
+        <ShieldCheck size={14} style={{ color: "var(--green)", flexShrink: 0 }} />
+        <span style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
+          Stocké uniquement sur votre machine. Aucune donnée n'est envoyée.
+        </span>
+      </div>
+
+      {entries.length === 0 && (
+        <div style={{
+          padding: "40px 20px",
+          textAlign: "center",
+          color: "var(--muted)",
+          opacity: 0.5,
+          fontSize: 13,
+        }}>
+          Aucune transcription pour le moment.
+          <br />
+          <span style={{ fontSize: 11 }}>Vos dictées apparaîtront ici.</span>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {entries.map((entry, i) => (
+          <div
+            key={i}
+            style={{
+              padding: "10px 12px",
+              borderRadius: "var(--radius)",
+              border: "1px solid var(--border)",
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{
+                fontSize: 13,
+                color: "var(--fg)",
+                margin: 0,
+                lineHeight: 1.5,
+                wordBreak: "break-word",
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}>
+                {entry.text}
+              </p>
+              <span style={{ fontSize: 10, color: "var(--muted)", opacity: 0.6, marginTop: 4, display: "block" }}>
+                {formatDate(entry.date)}
+              </span>
+            </div>
+            <button
+              onClick={() => copyText(entry.text, i)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+                border: "1px solid var(--border)", background: "transparent",
+                color: copied === i ? "var(--green)" : "var(--muted)",
+                cursor: "pointer", transition: "all 0.15s",
+              }}
+              title="Copier"
+            >
+              {copied === i ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─── About Section ─── */
 function AboutSection({
   appVersion,
@@ -528,22 +890,56 @@ function AboutSection({
         </div>
       </div>
 
+      {/* Storytelling */}
+      <div style={{
+        padding: "16px 20px",
+        borderRadius: "var(--radius)",
+        background: "hsla(217, 91%, 60%, 0.04)",
+        border: "1px solid hsla(217, 91%, 60%, 0.08)",
+        lineHeight: 1.7,
+      }}>
+        <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>
+          On passait plus de temps à taper qu'à penser.
+        </p>
+        <p style={{ fontSize: 12, color: "var(--fg)", margin: "8px 0 0", fontWeight: 500 }}>
+          CursorVoice est né d'une frustration simple : pourquoi nos idées doivent-elles attendre
+          que nos doigts les rattrapent ?
+        </p>
+        <p style={{ fontSize: 12, color: "var(--muted)", margin: "8px 0 0" }}>
+          Un raccourci. Vous parlez. Le texte apparaît là où clignote votre curseur.
+          Pas de cloud, pas de compte, pas de latence. Juste votre voix et une IA
+          qui tourne sur votre machine.
+        </p>
+        <p style={{ fontSize: 11, color: "var(--muted)", margin: "12px 0 0", opacity: 0.6, fontStyle: "italic" }}>
+          Open-source. Offline. Gratuit. Pour toujours.
+        </p>
+      </div>
+
+      {/* Info rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <div className="card-row">
           <span style={{ fontSize: 13, color: "var(--muted)" }}>Mise à jour</span>
           {updateStatus.status === "up-to-date" && (
-            <span style={{ fontSize: 12, color: "var(--green)" }}>✓ À jour</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--green)" }}>
+              <span className="status-pulse green" /> À jour
+            </span>
           )}
           {updateStatus.status === "downloading" && (
-            <span style={{ fontSize: 12, color: "var(--blue)" }}>↓ v{updateStatus.version}...</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--blue)" }}>
+              <span className="status-pulse blue" /> v{updateStatus.version}
+            </span>
           )}
           {updateStatus.status === "ready" && (
             <button
-              className="select-btn"
               onClick={() => api?.installUpdate()}
-              style={{ padding: "4px 10px", fontSize: 11, color: "var(--blue)", border: "1px solid var(--blue)", borderRadius: 6, background: "transparent", cursor: "pointer", width: "auto" }}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "4px 10px", fontSize: 11, fontWeight: 500,
+                color: "var(--blue)", border: "1px solid hsla(217, 91%, 60%, 0.3)",
+                borderRadius: 6, background: "hsla(217, 91%, 60%, 0.06)", cursor: "pointer",
+              }}
             >
-              Installer v{updateStatus.version}
+              <span className="status-pulse blue" /> Installer v{updateStatus.version}
             </button>
           )}
         </div>
@@ -553,52 +949,231 @@ function AboutSection({
         </div>
         <div className="card-row">
           <span style={{ fontSize: 13, color: "var(--muted)" }}>Moteur</span>
-          <span style={{ fontSize: 12, color: "var(--fg)" }}>Whisper AI</span>
+          <span style={{ fontSize: 12, color: "var(--fg)" }}>IA locale (offline)</span>
+        </div>
+        <div className="card-row">
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>Données envoyées</span>
+          <span style={{ fontSize: 12, color: "var(--green)" }}>Aucune</span>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <p style={{ fontSize: 11, color: "var(--muted)", opacity: 0.6, textAlign: "center", lineHeight: 1.6 }}>
-        Open-source voice dictation.
-        <br />
-        100% offline, privacy-first.
-      </p>
+
+/* ─── Silence Dropdown ─── */
+const SILENCE_OPTIONS = [
+  { value: 0, label: "Désactivé" },
+  { value: 3, label: "3 secondes" },
+  { value: 5, label: "5 secondes" },
+  { value: 8, label: "8 secondes" },
+  { value: 10, label: "10 secondes" },
+  { value: 15, label: "15 secondes" },
+];
+
+function SilenceDropdown({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = SILENCE_OPTIONS.find((o) => o.value === value) || SILENCE_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="card-row">
+      <div>
+        <span style={{ fontSize: 13, color: "var(--muted)" }}>Auto-stop après silence</span>
+        <div style={{ fontSize: 11, color: "var(--muted)", opacity: 0.6, marginTop: 2 }}>
+          Arrête automatiquement après un silence prolongé
+        </div>
+      </div>
+      <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+        <button
+          onClick={() => setOpen(!open)}
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "6px 10px",
+            background: "var(--secondary)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: value > 0 ? "var(--blue)" : "var(--muted)",
+            fontSize: 12, fontWeight: 500,
+            cursor: "pointer",
+            transition: "all 0.15s",
+          }}
+        >
+          {current.label}
+          <ChevronDown size={11} style={{ opacity: 0.5, transition: "transform 0.15s", transform: open ? "rotate(180deg)" : "none" }} />
+        </button>
+        {open && (
+          <div style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            right: 0,
+            minWidth: 140,
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+            padding: 4,
+            zIndex: 50,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          }}>
+            {SILENCE_OPTIONS.map((opt) => {
+              const active = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => { onChange(opt.value); setOpen(false); }}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    width: "100%", padding: "7px 10px",
+                    borderRadius: 6, border: "none",
+                    background: active ? "hsla(217, 91%, 60%, 0.08)" : "transparent",
+                    color: active ? "var(--blue)" : "var(--fg)",
+                    fontSize: 12, cursor: "pointer",
+                    transition: "background 0.1s", textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "var(--secondary)"; }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+                >
+                  {opt.label}
+                  {active && <Check size={11} style={{ color: "var(--green)" }} />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 /* ─── Hotkey Input ─── */
+// Map browser KeyboardEvent.key (uppercased) → Electron accelerator name
+const KEY_MAP: Record<string, string> = {
+  // Arrows
+  ARROWUP: "Up", ARROWDOWN: "Down", ARROWLEFT: "Left", ARROWRIGHT: "Right",
+  // Whitespace / editing
+  " ": "Space", ENTER: "Return", ESCAPE: "Escape", BACKSPACE: "Backspace",
+  DELETE: "Delete", TAB: "Tab", INSERT: "Insert",
+  // Navigation
+  HOME: "Home", END: "End", PAGEUP: "PageUp", PAGEDOWN: "PageDown",
+  // Locks
+  CAPSLOCK: "Capslock", NUMLOCK: "Numlock", SCROLLLOCK: "Scrolllock",
+  // Media
+  AUDIOVOLUMEUP: "VolumeUp", AUDIOVOLUMEDOWN: "VolumeDown", AUDIOVOLUMEMUTE: "VolumeMute",
+  MEDIATRACKNEXT: "MediaNextTrack", MEDIATRACKPREVIOUS: "MediaPreviousTrack",
+  MEDIASTOP: "MediaStop", MEDIAPLAYPAUSE: "MediaPlayPause",
+  PRINTSCREEN: "PrintScreen",
+};
+
+// Display-friendly labels for the UI
+const DISPLAY_MAP: Record<string, string> = {
+  CommandOrControl: "Ctrl", Shift: "Maj", Alt: "Alt",
+  Up: "↑", Down: "↓", Left: "←", Right: "→",
+  Space: "Espace", Return: "Entrée", Escape: "Échap", Backspace: "⌫",
+  Delete: "Suppr", Tab: "Tab", Insert: "Inser",
+  PageUp: "Page↑", PageDown: "Page↓",
+  Capslock: "Verr.Maj", Numlock: "Verr.Num",
+  VolumeUp: "Vol+", VolumeDown: "Vol-", VolumeMute: "Muet",
+};
+
+function resolveKey(e: KeyboardEvent): string {
+  const raw = e.key.toUpperCase();
+  if (e.location === 3 && raw >= "0" && raw <= "9") return "num" + raw;
+  if (e.location === 3 && raw === "+") return "numadd";
+  if (e.location === 3 && raw === "-") return "numsub";
+  if (e.location === 3 && raw === "*") return "nummult";
+  if (e.location === 3 && raw === "/") return "numdiv";
+  if (e.location === 3 && raw === ".") return "numdec";
+  return KEY_MAP[raw] || KEY_MAP[e.key] || raw;
+}
+
+function KeyDisplay({ parts }: { parts: string[] }) {
+  const displayed = parts.map((p) => DISPLAY_MAP[p] || p);
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {displayed.map((key, i) => (
+        <span key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {i > 0 && <span style={{ fontSize: 11, color: "var(--muted)", opacity: 0.4 }}>+</span>}
+          <kbd>{key}</kbd>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function HotkeyInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [listening, setListening] = useState(false);
-  const display = value.replace("CommandOrControl", "Ctrl").replace("Shift", "Maj");
+  const [liveParts, setLiveParts] = useState<string[]>([]);
 
   useEffect(() => {
     if (!listening) return;
-    const handler = (e: KeyboardEvent) => {
+
+    const onDown = (e: KeyboardEvent) => {
       e.preventDefault();
-      const parts: string[] = [];
-      if (e.ctrlKey || e.metaKey) parts.push("CommandOrControl");
-      if (e.shiftKey) parts.push("Shift");
-      if (e.altKey) parts.push("Alt");
-      const key = e.key.toUpperCase();
-      if (!["CONTROL", "SHIFT", "ALT", "META"].includes(key) && parts.length > 0) {
-        parts.push(key);
-        onChange(parts.join("+"));
-        setListening(false);
+      const mods: string[] = [];
+      if (e.ctrlKey || e.metaKey) mods.push("CommandOrControl");
+      if (e.shiftKey) mods.push("Shift");
+      if (e.altKey) mods.push("Alt");
+
+      const raw = e.key.toUpperCase();
+      const isModifier = ["CONTROL", "SHIFT", "ALT", "META"].includes(raw);
+
+      if (isModifier) {
+        setLiveParts(mods);
+        return;
       }
+
+      if (mods.length === 0) return;
+
+      const key = resolveKey(e);
+      const final = [...mods, key];
+      onChange(final.join("+"));
+      setListening(false);
+      setLiveParts([]);
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+
+    const onUp = (e: KeyboardEvent) => {
+      e.preventDefault();
+      const mods: string[] = [];
+      if (e.ctrlKey || e.metaKey) mods.push("CommandOrControl");
+      if (e.shiftKey) mods.push("Shift");
+      if (e.altKey) mods.push("Alt");
+      setLiveParts(mods);
+    };
+
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+    };
   }, [listening, onChange]);
+
+  const savedParts = value.split("+");
 
   return (
     <button
       className={`select-btn ${listening ? "active" : ""}`}
-      onClick={() => setListening(true)}
-      style={{ fontFamily: "monospace", ...(listening ? { boxShadow: "0 0 0 2px hsla(217, 91%, 60%, 0.15)" } : {}) }}
+      onClick={() => { setListening(true); setLiveParts([]); }}
+      style={{ ...(listening ? { boxShadow: "0 0 0 2px hsla(217, 91%, 60%, 0.15)" } : {}) }}
     >
-      <span style={{ color: listening ? "var(--blue)" : "var(--muted)" }}>
-        {listening ? "Appuyez sur votre raccourci..." : display}
-      </span>
+      {listening ? (
+        liveParts.length > 0 ? (
+          <KeyDisplay parts={liveParts} />
+        ) : (
+          <span style={{ color: "var(--blue)", fontSize: 13 }}>Appuyez sur votre raccourci...</span>
+        )
+      ) : (
+        <KeyDisplay parts={savedParts} />
+      )}
     </button>
   );
 }

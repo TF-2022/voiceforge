@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeAllListeners("model:progress");
   },
 
+  getHistory: () => ipcRenderer.invoke("history:get"),
+  clearHistory: () => ipcRenderer.invoke("history:clear"),
+
   getUpdateStatus: () => ipcRenderer.invoke("update:status"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   onUpdateStatus: (cb: (data: any) => void) => {

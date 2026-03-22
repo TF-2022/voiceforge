@@ -9,8 +9,8 @@ type Status = "idle" | "recording" | "transcribing" | "injecting" | "done" | "em
 type View = "recording" | "settings" | "onboarding";
 
 const RECORDING_SIZE = { w: 260, h: 72 };
-const SETTINGS_SIZE = { w: 820, h: 620 };
-const ONBOARDING_SIZE = { w: 420, h: 520 };
+const SETTINGS_SIZE = { w: 880, h: 640 };
+const ONBOARDING_SIZE = { w: 520, h: 560 };
 
 const DEV_FORCE_ONBOARDING = false;
 
@@ -18,7 +18,9 @@ export default function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [view, setView] = useState<View>("recording");
   const [ready, setReady] = useState(false);
-  const { stream, startRecording, stopRecording, cancelRecording } = useAudioRecorder();
+  const [inputDevice, setInputDevice] = useState<string>("default");
+  const [silenceTimeout, setSilenceTimeout] = useState(0);
+  const { stream, startRecording, stopRecording, cancelRecording } = useAudioRecorder({ deviceId: inputDevice, silenceTimeout });
 
   // Refs to avoid stale closures in IPC callbacks
   const viewRef = useRef(view);
@@ -81,8 +83,12 @@ export default function App() {
     return () => cleanups.forEach((fn) => fn());
   }, [handleStartRecording, handleStopRecording, openSettings]);
 
-  // Check if onboarding is needed on mount
+  // Check if onboarding is needed on mount + load inputDevice
   useEffect(() => {
+    api?.getSettings().then((s: any) => {
+      if (s?.inputDevice) setInputDevice(s.inputDevice);
+      if (s?.silenceTimeout != null) setSilenceTimeout(s.silenceTimeout);
+    });
     api?.getAppStatus().then((s: any) => {
       if (!s.onboardingDone || !s.hasModel) {
         setView("onboarding");
@@ -117,7 +123,7 @@ export default function App() {
   }
 
   if (view === "settings") {
-    return <SettingsPanel onClose={closeSettings} />;
+    return <SettingsPanel onClose={closeSettings} onDeviceChange={setInputDevice} onSilenceTimeoutChange={setSilenceTimeout} />;
   }
 
   return (

@@ -7,6 +7,11 @@ export interface AppConfig {
   model: WhisperModel;
   language: string;
   inputDevice: string;
+  pushToTalk: boolean;
+  translateMode: boolean;
+  initialPrompt: string;
+  silenceTimeout: number; // seconds, 0 = disabled
+  history: { text: string; date: string }[];
   launchAtStartup: boolean;
   pasteMethod: "clipboard" | "keystroke";
   windowPosition: { x: number; y: number } | null;
@@ -18,6 +23,11 @@ const DEFAULTS: AppConfig = {
   model: "base",
   language: "fr",
   inputDevice: "default",
+  pushToTalk: false,
+  translateMode: false,
+  initialPrompt: "",
+  silenceTimeout: 0,
+  history: [],
   launchAtStartup: true,
   pasteMethod: "clipboard",
   windowPosition: null,

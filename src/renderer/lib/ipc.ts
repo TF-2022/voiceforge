@@ -28,6 +28,8 @@ export interface ElectronAPI {
   downloadModel: (name: string) => Promise<{ success: boolean; error?: string }>;
   switchModel: (name: string) => Promise<{ success: boolean; error?: string }>;
   getUpdateStatus: () => Promise<{ status: string; version: string }>;
+  getHistory: () => Promise<{ text: string; date: string }[]>;
+  clearHistory: () => Promise<void>;
   installUpdate: () => Promise<void>;
   onUpdateStatus: (cb: (data: { status: string; version: string }) => void) => () => void;
   resizeWindow: (width: number, height: number) => Promise<void>;

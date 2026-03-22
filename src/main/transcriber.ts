@@ -18,6 +18,8 @@ interface TranscribeOptions {
   wavPath: string;
   modelPath: string;
   language?: string;
+  translate?: boolean;
+  prompt?: string;
   timeout?: number;
 }
 
@@ -98,7 +100,7 @@ export async function restartWithModel(modelPath: string): Promise<void> {
 }
 
 function transcribeViaServer(options: TranscribeOptions): Promise<string> {
-  const { wavPath, language = "fr", timeout = 10000 } = options;
+  const { wavPath, language = "fr", translate = false, prompt = "", timeout = 10000 } = options;
 
   return new Promise((resolve, reject) => {
     const boundary = "----CursorVoice" + Date.now();
@@ -112,6 +114,14 @@ function transcribeViaServer(options: TranscribeOptions): Promise<string> {
 
     if (language !== "auto") {
       parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n`));
+    }
+
+    if (translate) {
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="translate"\r\n\r\ntrue\r\n`));
+    }
+
+    if (prompt) {
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n${prompt}\r\n`));
     }
 
     parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\ntext\r\n`));
@@ -151,7 +161,7 @@ function transcribeViaServer(options: TranscribeOptions): Promise<string> {
 }
 
 function transcribeViaCLI(options: TranscribeOptions): Promise<string> {
-  const { wavPath, modelPath, language = "fr", timeout = 30000 } = options;
+  const { wavPath, modelPath, language = "fr", translate = false, prompt = "", timeout = 30000 } = options;
 
   return new Promise((resolve, reject) => {
     const args = [
@@ -165,6 +175,8 @@ function transcribeViaCLI(options: TranscribeOptions): Promise<string> {
     ];
 
     if (language !== "auto") args.push("--language", language);
+    if (translate) args.push("--translate");
+    if (prompt) args.push("--prompt", prompt);
 
     const proc = spawn(getWhisperPath(), args);
     let output = "";

@@ -152,11 +152,26 @@ function stopRecording() {
   send("recording:stop");
 }
 
-function toggleRecording() {
-  if (isRecording) {
-    stopRecording();
+let pttTimer: ReturnType<typeof setTimeout> | null = null;
+
+function handleHotkey() {
+  if (getConfig("pushToTalk")) {
+    if (!isRecording) {
+      startRecording();
+    }
+    // Key repeat heartbeat: reset timer on each repeat event
+    if (pttTimer) clearTimeout(pttTimer);
+    pttTimer = setTimeout(() => {
+      // No repeat received — key was released
+      pttTimer = null;
+      stopRecording();
+    }, 500);
   } else {
-    startRecording();
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
   }
 }
 
@@ -171,14 +186,14 @@ app.whenReady().then(async () => {
 
 
   // Setup system tray
-  setupTray(app, toggleRecording, () => {
+  setupTray(app, handleHotkey, () => {
     if (recordingWindow && !recordingWindow.isDestroyed()) {
       // Send settings IPC BEFORE showing to avoid pill flash
       send("show:settings");
       setTimeout(() => {
         if (recordingWindow && !recordingWindow.isDestroyed()) {
           recordingWindow.setFocusable(true);
-          recordingWindow.setContentSize(820, 620);
+          recordingWindow.setContentSize(880, 640);
           recordingWindow.center();
           recordingWindow.show();
           recordingWindow.focus();
@@ -196,7 +211,7 @@ app.whenReady().then(async () => {
   // Register global hotkey
   globalShortcut.unregisterAll();
   const hotkey = getConfig("hotkey");
-  const success = globalShortcut.register(hotkey, toggleRecording);
+  const success = globalShortcut.register(hotkey, handleHotkey);
 
   // IPC Handlers (register BEFORE server start so they're ready immediately)
   ipcMain.handle("audio:process", async (_event, buffer: ArrayBuffer) => {
@@ -242,6 +257,8 @@ app.whenReady().then(async () => {
         wavPath,
         modelPath,
         language: getConfig("language"),
+        translate: getConfig("translateMode"),
+        prompt: getConfig("initialPrompt") || undefined,
       });
 
       try { fs.unlinkSync(webmPath); fs.unlinkSync(wavPath); } catch {}
@@ -253,6 +270,13 @@ app.whenReady().then(async () => {
         hideIfNotRecording(1200);
         return { success: true, text: "" };
       }
+
+      // Save to history (max 20)
+      const entry = { text: text.trim(), date: new Date().toISOString() };
+      const history = config.get("history") || [];
+      history.unshift(entry);
+      if (history.length > 20) history.length = 20;
+      config.set("history", history);
 
       // Hide + inject
       hideIfNotRecording();
@@ -279,13 +303,15 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("settings:get", () => config.store);
-  const ALLOWED_SETTINGS = ["hotkey", "model", "language", "launchAtStartup", "pasteMethod", "windowPosition", "inputDevice", "onboardingDone"];
+  ipcMain.handle("history:get", () => config.get("history") || []);
+  ipcMain.handle("history:clear", () => { config.set("history", []); });
+  const ALLOWED_SETTINGS = ["hotkey", "model", "language", "launchAtStartup", "pasteMethod", "windowPosition", "inputDevice", "pushToTalk", "translateMode", "initialPrompt", "silenceTimeout", "onboardingDone"];
   ipcMain.handle("settings:set", (_event, key: string, value: any) => {
     if (!ALLOWED_SETTINGS.includes(key)) return;
     config.set(key as any, value);
     if (key === "hotkey") {
       globalShortcut.unregisterAll();
-      globalShortcut.register(value, toggleRecording);
+      globalShortcut.register(value, handleHotkey);
     }
     if (key === "launchAtStartup") {
       app.setLoginItemSettings({ openAtLogin: value as boolean, openAsHidden: true });
@@ -367,7 +393,7 @@ app.whenReady().then(async () => {
     recordingWindow.once("ready-to-show", () => {
       if (!recordingWindow || recordingWindow.isDestroyed()) return;
       recordingWindow.setFocusable(true);
-      recordingWindow.setContentSize(420, 520);
+      recordingWindow.setContentSize(520, 560);
       recordingWindow.center();
       recordingWindow.show();
       recordingWindow.focus();
@@ -376,7 +402,7 @@ app.whenReady().then(async () => {
     setTimeout(() => {
       if (recordingWindow && !recordingWindow.isDestroyed() && !recordingWindow.isVisible()) {
         recordingWindow.setFocusable(true);
-        recordingWindow.setContentSize(420, 520);
+        recordingWindow.setContentSize(520, 560);
         recordingWindow.center();
         recordingWindow.show();
         recordingWindow.focus();
