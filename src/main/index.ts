@@ -389,25 +389,16 @@ app.whenReady().then(async () => {
 
   const needsOnboarding = !getConfig("onboardingDone") || !hasModel;
   if (needsOnboarding && recordingWindow && !recordingWindow.isDestroyed()) {
-    // Show window immediately — renderer will display onboarding
-    recordingWindow.once("ready-to-show", () => {
+    // Wait for renderer to be ready, then show onboarding
+    recordingWindow.webContents.once("did-finish-load", () => {
       if (!recordingWindow || recordingWindow.isDestroyed()) return;
+      send("show:onboarding");
       recordingWindow.setFocusable(true);
       recordingWindow.setContentSize(520, 560);
       recordingWindow.center();
       recordingWindow.show();
       recordingWindow.focus();
     });
-    // Fallback: if ready-to-show already fired, show after a short delay
-    setTimeout(() => {
-      if (recordingWindow && !recordingWindow.isDestroyed() && !recordingWindow.isVisible()) {
-        recordingWindow.setFocusable(true);
-        recordingWindow.setContentSize(520, 560);
-        recordingWindow.center();
-        recordingWindow.show();
-        recordingWindow.focus();
-      }
-    }, 2000);
   }
   // Start whisper-server in background (model stays in RAM = faster transcription)
   if (hasModel && hasWhisper) {

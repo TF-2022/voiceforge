@@ -2,17 +2,66 @@ name: Build & Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
 
 permissions:
   contents: write
 
 jobs:
+  version-and-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if release needed
+        id: check
+        run: |
+          # Skip if last commit is a version bump (avoid infinite loop)
+          LAST_MSG=$(git log -1 --pretty=%s)
+          if [[ "$LAST_MSG" == release:* ]]; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "Skipping: last commit is a release bump"
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.should_release == 'true'
+        with:
+          node-version: 22
+
+      - name: Bump version and create tag
+        if: steps.check.outputs.should_release == 'true'
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          NEW_VERSION=$(npm version patch -m "release: v%s" --no-git-tag-version)
+          VERSION=${NEW_VERSION#v}
+          git add package.json package-lock.json
+          git commit -m "release: v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin main --tags
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+
   build-windows:
+    needs: version-and-tag
+    if: needs.version-and-tag.outputs.should_release == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version-and-tag.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -34,9 +83,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-macos:
+    needs: version-and-tag
+    if: needs.version-and-tag.outputs.should_release == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version-and-tag.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -63,16 +116,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-release:
-    needs: [build-windows, build-macos]
-    if: always() && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success')
+    needs: [version-and-tag, build-windows, build-macos]
+    if: always() && needs.version-and-tag.outputs.should_release == 'true' && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Publish release
         run: |
-          # Try to publish existing draft, or create a new release if none exists
-          gh release edit "${{ github.ref_name }}" --draft=false --latest 2>/dev/null \
-            || gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes --latest
+          TAG="${{ needs.version-and-tag.outputs.tag }}"
+          gh release edit "$TAG" --draft=false --latest 2>/dev/null \
+            || gh release create "$TAG" --title "$TAG" --generate-notes --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

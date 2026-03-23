@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { X, RotateCcw, Download, Check, Loader2, Keyboard, Mic, Info, Search, AudioLines, Globe, Sparkles, Clock, Copy, Trash2, ChevronDown, ShieldCheck } from "lucide-react";
+import { X, RotateCcw, Download, Check, Loader2, Keyboard, Mic, Info, Search, AudioLines, Globe, Sparkles, Clock, Copy, Trash2, ChevronDown, ShieldCheck, HelpCircle, MousePointerClick } from "lucide-react";
 import { api, ModelProgress } from "../lib/ipc";
 import { BubblePreview } from "./BubblePreview";
 
@@ -132,9 +132,10 @@ const ALL_LANGUAGES = [
   { id: "sq", label: "Albanian" },
 ];
 
-type Section = "general" | "language" | "transcription" | "microphone" | "model" | "history" | "about";
+type Section = "howto" | "general" | "language" | "transcription" | "microphone" | "model" | "history" | "about";
 
 const NAV_ITEMS: { id: Section; label: string; icon: typeof Keyboard }[] = [
+  { id: "howto", label: "Comment utiliser", icon: HelpCircle },
   { id: "general", label: "Général", icon: Keyboard },
   { id: "language", label: "Langue", icon: Globe },
   { id: "transcription", label: "Transcription", icon: Sparkles },
@@ -258,6 +259,9 @@ export default function SettingsPanel({ onClose, onDeviceChange, onSilenceTimeou
 
         {/* Content */}
         <div className="overflow-y-auto" style={{ flex: 1, padding: "28px 36px", display: "flex", flexDirection: "column", gap: 28 }}>
+          {section === "howto" && (
+            <HowToSection />
+          )}
           {section === "general" && (
             <GeneralSection settings={settings} update={update} />
           )}
@@ -329,6 +333,116 @@ export default function SettingsPanel({ onClose, onDeviceChange, onSilenceTimeou
             Installer v{updateStatus.version}
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── How To Section ─── */
+function HowToSection() {
+  const STEPS = [
+    {
+      num: "1",
+      title: "Appuyez sur le raccourci",
+      desc: "Depuis n'importe quelle application",
+      color: "var(--blue)",
+      visual: (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {["Ctrl", "↓"].map((k, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {i > 0 && <span style={{ fontSize: 12, color: "var(--muted)", opacity: 0.4 }}>+</span>}
+              <kbd>{k}</kbd>
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      num: "2",
+      title: "Parlez",
+      desc: "La bulle apparait, dictez votre texte",
+      color: "var(--red)",
+      visual: <BubblePreview />,
+    },
+    {
+      num: "3",
+      title: "Le texte apparait",
+      desc: "Colle automatiquement a votre curseur",
+      color: "var(--green)",
+      visual: (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "8px 12px", borderRadius: 8,
+          background: "hsla(142, 76%, 36%, 0.08)",
+          border: "1px solid hsla(142, 76%, 36%, 0.15)",
+        }}>
+          <Check size={14} style={{ color: "var(--green)" }} />
+          <span style={{ fontSize: 13, color: "var(--green)", fontWeight: 500 }}>Colle</span>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <div className="section-title">Comment ca marche</div>
+      <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 24, lineHeight: 1.6 }}>
+        3 etapes. Aucun compte. Aucune connexion internet.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {STEPS.map((step, i) => (
+          <div key={i} style={{
+            padding: "18px 20px",
+            borderRadius: "var(--radius)",
+            border: "1px solid var(--border)",
+            display: "flex", alignItems: "center", gap: 20,
+          }}>
+            {/* Step number */}
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+              background: `color-mix(in srgb, ${step.color} 10%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${step.color} 20%, transparent)`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 15, fontWeight: 700, color: step.color,
+            }}>
+              {step.num}
+            </div>
+
+            {/* Text */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", marginBottom: 2 }}>{step.title}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>{step.desc}</div>
+            </div>
+
+            {/* Visual */}
+            <div style={{ flexShrink: 0 }}>
+              {step.visual}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tips */}
+      <div style={{ marginTop: 24 }}>
+        <div className="section-title">Astuces</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {[
+            { icon: MousePointerClick, text: "Glissez la bulle pour la repositionner" },
+            { icon: Keyboard, text: "Appuyez sur Echap pour annuler un enregistrement" },
+            { icon: Sparkles, text: "Ajoutez un prompt initial pour ameliorer la precision" },
+            { icon: Clock, text: "Retrouvez vos transcriptions dans l'onglet Historique" },
+          ].map(({ icon: Icon, text }, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "10px 14px", borderRadius: "var(--radius)",
+              border: "1px solid var(--border)",
+            }}>
+              <Icon size={14} style={{ color: "var(--muted)", flexShrink: 0, opacity: 0.6 }} />
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>{text}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
