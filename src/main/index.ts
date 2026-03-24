@@ -400,6 +400,15 @@ app.whenReady().then(async () => {
       recordingWindow.focus();
     });
   }
+  // macOS: request accessibility permission (needed for nut-js to simulate Cmd+V)
+  if (process.platform === "darwin") {
+    const { systemPreferences } = require("electron");
+    if (!systemPreferences.isTrustedAccessibilityClient(false)) {
+      // Prompt once — macOS will show the system dialog
+      systemPreferences.isTrustedAccessibilityClient(true);
+    }
+  }
+
   // Start whisper-server in background (model stays in RAM = faster transcription)
   if (hasModel && hasWhisper) {
     const modelPath = getActiveModelPath();
