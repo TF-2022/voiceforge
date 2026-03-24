@@ -31,7 +31,8 @@
     "perMachine": false,
     "allowToChangeInstallationDirectory": false,
     "deleteAppDataOnUninstall": true,
-    "artifactName": "CursorVoice-Setup-${version}.${ext}"
+    "artifactName": "CursorVoice-Setup-${version}.${ext}",
+    "include": "build/uninstaller.nsh"
   },
   "mac": {
     "target": [{ "target": "dmg", "arch": ["arm64"] }],
